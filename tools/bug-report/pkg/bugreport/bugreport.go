@@ -46,7 +46,7 @@ const (
 var (
 	bugReportDefaultOutputDir = ""
 	bugReportDefaultIstioNamespaces = []string{"istio-system"}
-	bugReportDefaultInclude         = []string{"*"}
+	bugReportDefaultInclude         = []string{""}
 	bugReportDefaultExclude         = []string{"kube-system,kube-public"}
 )
 
@@ -99,6 +99,7 @@ func runBugReportCommand(cmd *cobra.Command) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			var wg2 sync.WaitGroup
 			cv := strings.Split(p, ".")
 			namespace, pod, container := cv[0], cv[2], cv[3]
 
@@ -111,17 +112,31 @@ func runBugReportCommand(cmd *cobra.Command) error {
 				lock.Unlock()
 			}()
 
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				cds, err := content.GetCoredumps(namespace, pod, container, config.DryRun)
-				lock.Lock()
-				logs[p] = logentry.NewCoreDumpLog(p, err)
-				for index, coredump := range cds {
-					logs[p].SetLogString(coredump, index)
-				}
-				lock.Unlock()
-			}()
+			if container == "istio-proxy" {
+				wg.Add(1)
+				go func() {
+					defer wg2.Done()
+					cds, err := content.GetCoredumps(namespace, pod, container, config.DryRun)
+					lock.Lock()
+					logs[p] = logentry.NewCoreDumpLog(p, err)
+					for index, coredump := range cds {
+						logs[p].SetLogString(coredump, index)
+					}
+					lock.Unlock()
+				}()
+			}
+
+			if strings.HasPrefix(pod, "istiod-") {
+				wg.Add(1)
+				go func() {
+					defer wg2.Done()
+					info, err := content.GetIstiodInfo(namespace, pod, config.DryRun)
+					lock.Lock()
+					errs = util.AppendErr(errs, err)
+					lock.Unlock()
+					fmt.Println(info)
+				}()
+			}
 		}()
 	}
 	wg.Wait()
@@ -138,6 +153,7 @@ func runBugReportCommand(cmd *cobra.Command) error {
 }
 
 func getLog(resources *cluster2.Resources, config *config.BugReportConfig, namespace, pod, container string) (string, *processlog.Stats, int, error) {
+	log.Infof("Getting logs for %s/%s/%s...", namespace, pod, container)
 	previous := resources.ContainerRestarts(pod, container) > 0
 	clog, err := kubectlcmd.Logs(namespace, pod, container, previous, config.DryRun)
 	if err != nil {
