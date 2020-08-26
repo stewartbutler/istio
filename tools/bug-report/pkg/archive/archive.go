@@ -16,13 +16,18 @@ package archive
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
+	"container/heap"
 	"fmt"
 	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"istio.io/istio/tools/bug-report/pkg/logentry"
+	"istio.io/pkg/log"
 )
 
 const (
@@ -34,6 +39,63 @@ var (
 	// Each run of the command produces a new archive.
 	instancePath = fmt.Sprint(rand.Int())
 )
+
+func CreateFromMap(logs map[string]*logentry.LogEntry, maxSize int) ([]byte, error) {
+	var archiveBuffer bytes.Buffer
+	gzw := gzip.NewWriter(&archiveBuffer)
+	tw := tar.NewWriter(gzw)
+
+	header := tar.Header{
+		Typeflag: tar.TypeDir,
+		Name: "logs/",
+		Mode: 0655,
+	}
+	tw.WriteHeader(&header)
+
+
+	// This builds a Max Heap based on priority and inverse the compressed file
+	// size. The goal is to include as many high priority logs as possible in the
+	// permitted file size.
+	var logheap logentry.LogHeap
+	heap.Init(&logheap)
+	for _, val := range logs {
+		newlog := val
+		heap.Push(&logheap, newlog)
+	}
+
+	for logheap.Len() > 0 && len(archiveBuffer.Bytes()) < maxSize {
+		val := heap.Pop(&logheap).(*logentry.LogEntry)
+		log.Infof("Val: %v", val)
+		for index, datum := range val.LogData {
+			log.Infof("Datum: %v", datum)
+			if len(datum) == 0 {
+				continue
+			}
+			defer tw.Flush()
+			defer gzw.Flush()
+
+			header = tar.Header{
+				Name: fmt.Sprintf("%s/%s.%d.log", strings.ToLower(val.Type), val.Path, index,),
+				Size: int64(len(datum)),
+				Mode: 0644,
+			}
+			if err := tw.WriteHeader(&header); err != nil {
+				log.Errorf("Error adding header to tar archive: %s", err)
+			}
+			if _, err := tw.Write(datum); err != nil {
+				log.Errorf("Error adding file data to tar archive: %s", err)
+			}
+
+			log.Infof("Wrote to archive: %s", val.Path)
+		}
+
+
+	}
+
+	tw.Close()
+	gzw.Close()
+	return archiveBuffer.Bytes(), nil
+}
 
 // Create creates a gzipped tar file from srcDir and writes it to outPath.
 func Create(srcDir, outPath string) error {

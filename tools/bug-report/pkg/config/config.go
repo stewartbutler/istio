@@ -124,6 +124,9 @@ type BugReportConfig struct {
 	// UploadToGCS uploads the archive to a GCS bucket. If no bucket
 	// address is given, it creates one.
 	UploadToGCS bool `json:"uploadToGCS"`
+
+	TempDir string `json:"tempDir"`
+	OutputDir string `json:"outputDir"`
 }
 
 func parseToIncludeTypeSlice(s string) []string {

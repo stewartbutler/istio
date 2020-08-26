@@ -17,8 +17,10 @@ package bugreport
 import (
 	"fmt"
 	"io/ioutil"
+	"reflect"
 	"time"
 
+	"github.com/fatih/structs"
 	"github.com/ghodss/yaml"
 	"github.com/spf13/cobra"
 
@@ -31,6 +33,7 @@ var (
 	included, excluded                      []string
 	commandTimeout, since                   time.Duration
 	gConfig                                 = &config2.BugReportConfig{}
+
 )
 
 func addFlags(cmd *cobra.Command, args *config2.BugReportConfig) {
@@ -65,11 +68,13 @@ func addFlags(cmd *cobra.Command, args *config2.BugReportConfig) {
 	cmd.PersistentFlags().StringSliceVar(&args.WhitelistedErrors, "whitelist-errs", nil, bugReportHelpWhitelistedErrors)
 
 	// archive and upload control
-	cmd.PersistentFlags().StringVar(&args.Context, "gcs-url", "", bugReportHelpGCSURL)
+
+	cmd.PersistentFlags().StringVar(&args.GCSURL, "gcs-url", "", bugReportHelpGCSURL)
 	cmd.PersistentFlags().BoolVar(&args.UploadToGCS, "upload", false, bugReportHelpUploadToGCS)
 
 	// output/working dir
-	cmd.PersistentFlags().StringVar(&tempDir, "dir", bugReportDefaultTempDir, bugReportHelpTempDir)
+	cmd.PersistentFlags().StringVar(&args.TempDir, "working-dir", bugReportDefaultTempDir, bugReportHelpTempDir)
+	cmd.PersistentFlags().StringVar(&args.OutputDir, "output-dir", "./", bugReportHelpOutputDir)
 }
 
 func parseConfig() (*config2.BugReportConfig, error) {
@@ -99,6 +104,13 @@ func parseConfig() (*config2.BugReportConfig, error) {
 			return nil, err
 		}
 		config.Exclude = append(config.Exclude, ss)
+	}
+
+	// Merge args from gconfig (CLI) in on top of config
+	for _, field := range structs.Names(&gConfig) {
+		reflect.ValueOf(config).Elem().FieldByName(field).Set(
+			reflect.ValueOf(gConfig).Elem().FieldByName(field),
+			)
 	}
 
 	return config, nil

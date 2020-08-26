@@ -50,6 +50,8 @@ whitelistedErrors:
   - e4
 gcsURL: f
 uploadToGCS: true
+tempDir: /test/
+outputDir: /some/path
 `
 
 	wantTime, err := time.Parse(time.RFC3339, "2002-10-02T10:00:00-05:00")
@@ -116,6 +118,8 @@ uploadToGCS: true
 		WhitelistedErrors: []string{"e3", "e4"},
 		GCSURL:            "f",
 		UploadToGCS:       true,
+		TempDir: "/test/",
+		OutputDir: "/some/path",
 	}
 
 	got := &BugReportConfig{}

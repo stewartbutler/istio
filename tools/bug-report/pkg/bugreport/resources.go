@@ -40,4 +40,5 @@ const (
 	bugReportHelpGCSURL      = "URL of the GCS bucket where the archive is uploaded."
 	bugReportHelpUploadToGCS = "Upload archive to GCS bucket. If gcs-url is unset, a new bucket is created."
 	bugReportHelpTempDir     = "Set a specific directory for temporary artifact storage."
+	bugReportHelpOutputDir = "Set a specific directory for archive output (a tar archive of gzipped logs)"
 )

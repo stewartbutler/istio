@@ -17,19 +17,21 @@ package bugreport
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
-
 	"istio.io/istio/operator/pkg/util"
+	"istio.io/istio/tools/bug-report/pkg/archive"
 	cluster2 "istio.io/istio/tools/bug-report/pkg/cluster"
 	"istio.io/istio/tools/bug-report/pkg/config"
 	"istio.io/istio/tools/bug-report/pkg/content"
 	"istio.io/istio/tools/bug-report/pkg/filter"
 	"istio.io/istio/tools/bug-report/pkg/kubeclient"
 	"istio.io/istio/tools/bug-report/pkg/kubectlcmd"
+	"istio.io/istio/tools/bug-report/pkg/logentry"
 	"istio.io/istio/tools/bug-report/pkg/processlog"
 	"istio.io/pkg/log"
 	"istio.io/pkg/version"
@@ -42,6 +44,7 @@ const (
 )
 
 var (
+	bugReportDefaultOutputDir = ""
 	bugReportDefaultIstioNamespaces = []string{"istio-system"}
 	bugReportDefaultInclude         = []string{"*"}
 	bugReportDefaultExclude         = []string{"kube-system,kube-public"}
@@ -66,7 +69,7 @@ func GetRootCmd(args []string) *cobra.Command {
 	return rootCmd
 }
 
-func runBugReportCommand(_ *cobra.Command) error {
+func runBugReportCommand(cmd *cobra.Command) error {
 	config, err := parseConfig()
 	if err != nil {
 		return err
@@ -87,45 +90,49 @@ func runBugReportCommand(_ *cobra.Command) error {
 		return err
 	}
 
-	log.Infof("Fetching logs for the following containers:\n\n%s\n", strings.Join(paths, "\n"))
-
 	var errs util.Errors
-	logs := make(map[string]string)
-	coreDumps := make(map[string][]string)
-	stats := make(map[string]*processlog.Stats)
-	importance := make(map[string]int)
+	logs := make(map[string]*logentry.LogEntry)
 	lock := sync.RWMutex{}
 	var wg sync.WaitGroup
 	for _, p := range paths {
 		p := p
+		wg.Add(1)
 		go func() {
-			wg.Add(1)
 			defer wg.Done()
 			cv := strings.Split(p, ".")
 			namespace, pod, container := cv[0], cv[2], cv[3]
 
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
 				defer wg.Done()
 				clog, cstat, imp, err := getLog(resources, config, namespace, pod, container)
 				lock.Lock()
-				logs[p], stats[p], importance[p] = clog, cstat, imp
-				errs = util.AppendErr(errs, err)
+				logs[p] = logentry.NewContainerLog(p, clog, 0, cstat, imp, err)
 				lock.Unlock()
 			}()
 
+			wg.Add(1)
 			go func() {
-				wg.Add(1)
 				defer wg.Done()
 				cds, err := content.GetCoredumps(namespace, pod, container, config.DryRun)
 				lock.Lock()
-				coreDumps[p] = cds
-				errs = util.AppendErr(errs, err)
+				logs[p] = logentry.NewCoreDumpLog(p, err)
+				for index, coredump := range cds {
+					logs[p].SetLogString(coredump, index)
+				}
 				lock.Unlock()
 			}()
 		}()
 	}
 	wg.Wait()
+
+	log.Infof("Outputting archive:")
+	ar, err := archive.CreateFromMap(logs, 40)
+	if err != nil {
+		log.Errorf("Error creating archive from map: %s", err)
+	}
+	log.Infof("Archive: %v", ar)
+	ioutil.WriteFile("./test.tgz", ar, 0644)
 
 	return errs.ToError()
 }

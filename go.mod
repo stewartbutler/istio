@@ -40,6 +40,7 @@ require (
 	github.com/cheggaaa/pb/v3 v3.0.4
 	github.com/cncf/udpa/go v0.0.0-20200629203442-efcf912fb354
 	github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd // indirect
+	github.com/containerd/containerd v1.3.2
 	github.com/containernetworking/cni v0.7.0-alpha1
 	github.com/containernetworking/plugins v0.7.3
 	github.com/coreos/etcd v3.3.15+incompatible
@@ -57,6 +58,7 @@ require (
 	github.com/envoyproxy/go-control-plane v0.9.6-0.20200623200256-ba7954ce7df4
 	github.com/evanphx/json-patch v4.5.0+incompatible
 	github.com/fatih/color v1.9.0
+	github.com/fatih/structs v1.1.0
 	github.com/frankban/quicktest v1.4.1 // indirect
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/ghodss/yaml v1.0.0
